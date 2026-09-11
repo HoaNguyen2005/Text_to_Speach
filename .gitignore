@@ -1,0 +1,33 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDE
+.vscode/
+.idea/
+
+# Weights & Large files
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.onnx
+engine/models_weights/
+
+# Media
+*.mp4
+*.wav
+*.mp3
+*.avi
