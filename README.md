@@ -24,7 +24,7 @@ Dự án này được thiết kế theo mô hình Microservices với 3 thành 
 
 ---
 
-## 🚀 Hướng Dẫn Cài Đặt & Khởi Chạy (Quick Start)
+## Hướng Dẫn Cài Đặt & Khởi Chạy 
 
 Để hệ thống hoạt động hoàn chỉnh, bạn cần khởi chạy đồng thời cả 3 dịch vụ trên 3 terminal (cửa sổ dòng lệnh) khác nhau.
 
@@ -69,14 +69,14 @@ npm run dev
 
 ---
 
-## 💡 Cách Sử Dụng
+## Cách Sử Dụng
 1. Mở trình duyệt và truy cập vào đường dẫn: `http://localhost:5173`
 2. Nhập văn bản kịch bản bài giảng bạn muốn tạo.
 3. Lựa chọn giọng giảng viên (Nam/Nữ) và phong cách đọc (Bản tin / Tiểu thuyết).
 4. Bấm **Tạo Bài Giảng** và chờ AI xử lý (khoảng 3-5 giây tùy độ dài văn bản).
 5. Nghe thử ngay trên trình duyệt!
 
-## 🔧 Thêm Giọng Đọc Mẫu
+## Thêm Giọng Đọc Mẫu
 Để thêm một giọng đọc mới cho hệ thống, bạn chỉ cần copy file ghi âm mẫu (`.wav`) vào thư mục `backend/public/audio/samples/`. 
 *(Vui lòng đặt tên file chứa từ `male` nếu đó là giọng nam, hệ thống sẽ tự động điều chỉnh giọng gốc phù hợp nhất).* Sau đó, cập nhật danh sách hiển thị trong mã nguồn `frontend/src/App.vue`.
 
