@@ -4,6 +4,8 @@ const app = express();
 
 app.use(cors()); 
 app.use(express.json()); 
+const path = require('path');
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
 // Import các routes
 const lectureRoutes = require('./app/routes/lecture.route');
@@ -42,26 +44,45 @@ app.post('/api/generate-lecture', async (req, res) => {
         const memUsage = process.memoryUsage();
         console.log(`[DEBUG - MEMORY] Hệ thống Node.js đang dùng : ${(memUsage.heapUsed / 1024 / 1024).toFixed(2)} MB RAM`);
 
-        // 4. (Giả lập) Chuyển tiếp xuống Python AI Engine
-        console.log(`\n[DEBUG - AI FORWARDING] Đang đóng gói dữ liệu và gọi sang Python FastAPI...`);
-        console.log(`[DEBUG - AI FORWARDING] Đang chờ AI xử lý (Giả lập delay 2 giây)...`);
+        // 4. Gọi sang Python FastAPI Engine thực sự
+        console.log(`\n[DEBUG - AI FORWARDING] Đang gửi yêu cầu sang Python Engine tại http://localhost:8000/generate...`);
         
-        // Dùng setTimeout để giả lập thời gian AI chạy thực tế
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        console.log(`[DEBUG - AI RESPONSE] AI đã xử lý xong và trả về kết quả!`);
+        try {
+            // Sử dụng fetch API có sẵn trong Node.js > 18
+            const aiResponse = await fetch('http://localhost:8000/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: text,
+                    teacher_id: teacher_id,
+                    style_id: style_id || 'normal'
+                })
+            });
+            
+            if (!aiResponse.ok) {
+                const errorData = await aiResponse.json();
+                throw new Error(errorData.detail || 'Lỗi từ AI Engine');
+            }
+            
+            const aiResult = await aiResponse.json();
+            console.log(`[DEBUG - AI RESPONSE] AI đã xử lý xong và trả về kết quả!`);
 
-        // 5. Trả kết quả về cho Vue
-        const totalTime = (Date.now() - startTime) / 1000;
-        console.log(`\n[DEBUG - API COMPLETION] Trả response HTTP 200 về cho Client Vue.js.`);
-        console.log(`[DEBUG - PERFORMANCE] Tổng thời gian phản hồi: ${totalTime.toFixed(3)} giây`);
-        console.log("=".repeat(100) + "\n");
+            // 5. Trả kết quả về cho Vue
+            const totalTime = (Date.now() - startTime) / 1000;
+            console.log(`\n[DEBUG - API COMPLETION] Trả response HTTP 200 về cho Client Vue.js.`);
+            console.log(`[DEBUG - PERFORMANCE] Tổng thời gian phản hồi: ${totalTime.toFixed(3)} giây`);
+            console.log("=".repeat(100) + "\n");
 
-        res.json({
-            status: "success",
-            message: "Đã tạo bài giảng thành công!",
-            audio_url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" // Link audio mẫu
-        });
+            res.json({
+                status: "success",
+                message: "Đã tạo bài giảng thành công!",
+                audio_url: aiResult.audio_url // Lấy URL trả về từ Python
+            });
+            
+        } catch (aiError) {
+            console.error(`[DEBUG - AI ERROR] Không thể gọi tới Python Engine. Có thể Python chưa chạy hoặc lỗi nội bộ:`, aiError.message);
+            return res.status(500).json({ error: `Lỗi AI Engine: ${aiError.message}` });
+        }
 
     } catch (error) {
         console.log(`\n[CRITICAL ERROR - BACKEND] CÓ LỖI XẢY RA TRONG LUỒNG XỬ LÝ!`);

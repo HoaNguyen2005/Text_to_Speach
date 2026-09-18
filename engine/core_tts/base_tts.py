@@ -1,52 +1,54 @@
-import torch
-from TTS.api import TTS
-import time
+import os
+import uuid
+import tempfile
+import subprocess
 
-class ExpressiveBaseTTS:
-    def __init__(self, model_path: str, device: str = "cpu"):
+class EdgeTTSModel:
+    def __init__(self, voice="vi-VN-HoaiMyNeural"):
         """
-        Khởi tạo mô hình XTTS v2 để sinh tiếng Việt với nhiều giọng điệu.
-        Sử dụng thư viện Coqui TTS.
+        Khởi tạo mô hình Edge TTS (Base TTS tiếng Việt chuẩn)
+        Giọng mặc định: vi-VN-HoaiMyNeural (Nữ)
+        Giọng nam có thể dùng: vi-VN-NamMinhNeural
         """
-        self.device = device
-        # XTTS_v2 là mô hình tốt nhất hiện tại cho zero-shot voice cloning và truyền tải cảm xúc
-        self.model_name = "tts_models/multilingual/multi-dataset/xtts_v2"
-        print(f"  [BASE TTS INIT] Đang nạp trọng số Expressive TTS ({self.model_name})")
+        self.default_voice = voice
+        self.tmp_dir = os.path.join(tempfile.gettempdir(), "edge_tts_cache")
+        os.makedirs(self.tmp_dir, exist_ok=True)
+        print(f"  [EDGE-TTS INIT] Khởi tạo Base TTS (Giọng mặc định: {self.default_voice})")
+
+    def synthesize(self, text: str, voice: str = None, style_id: str = None) -> str:
+        """
+        Tạo audio từ văn bản.
+        Trả về đường dẫn tới file âm thanh tạm thời (.mp3).
+        """
+        if not voice:
+            voice = self.default_voice
+            
+        print(f"    -> [EDGE-TTS] Đang sinh âm thanh gốc (Giọng: {voice}, Style: {style_id})...")
         
-        try:
-            # Khởi tạo mô hình XTTS
-            # Nếu chạy lần đầu, thư viện sẽ tự động tải model về (hoặc load từ model_path nếu đã tải offline)
-            self.model = TTS(self.model_name).to(self.device)
-            
-            # Sample rate chuẩn của XTTS thường là 24000
-            self.sample_rate = 24000 
-            
-            print(f"  [BASE TTS INIT] Thành công! Sample Rate của Base Audio là: {self.sample_rate}Hz")
-            
-        except Exception as e:
-            print(f"  [BASE TTS ERROR] Lỗi nạp mô hình Expressive TTS: {str(e)}")
-            raise e
-
-    def synthesize(self, text: str, style_reference_path: str):
-        """
-        Nhận văn bản đầu vào và file định hướng giọng điệu (style_reference_path),
-        trả về Tensor sóng âm (Waveform) mang ĐÚNG ngữ điệu của file mẫu.
-        """
-        start_time = time.time()
+        tmp_file = os.path.join(self.tmp_dir, f"base_{uuid.uuid4().hex}.mp3")
         
-        print(f"    -> [BASE TTS - TEXT] Sinh âm thanh mang ngữ điệu từ file: {style_reference_path}")
-
-        # Sinh âm thanh (Suy luận)
-        # Sử dụng tham số speaker_wav của XTTS để truyền tải giọng điệu (người đọc tin tức, tiểu thuyết...)
-        with torch.no_grad():
-            wav = self.model.tts(text=text, speaker_wav=style_reference_path, language="vi")
+        # Gọi edge-tts qua CLI để tránh xung đột asyncio với FastAPI
+        import sys
+        python_exe = sys.executable
             
-        # Kết quả trả về là một mảng Python thông thường, ta cần chuyển sang Tensor Pytorch (1, T)
-        # để tương thích với luồng Pipeline tiếp theo của OpenVoice
-        waveform_tensor = torch.tensor(wav).unsqueeze(0)
+        cmd = [
+            python_exe, "-m", "edge_tts",
+            "--text", text,
+            "--voice", voice,
+            "--write-media", tmp_file
+        ]
         
-        process_time = time.time() - start_time
-        print(f"    -> [BASE TTS - AUDIO] Kích thước Tensor đầu ra (Waveform): {waveform_tensor.shape}")
-        print(f"    -> [BASE TTS - TIME] Sinh Base Audio mất: {process_time:.3f} giây")
-
-        return waveform_tensor, self.sample_rate
+        # Tùy chỉnh tốc độ và cao độ dựa trên style_id
+        if style_id == "news":
+            # Đọc bản tin: Nhanh hơn, cao hơn một chút, dứt khoát
+            cmd.extend(["--rate=+15%", "--pitch=+5Hz"])
+        elif style_id == "novel" or style_id == "story":
+            # Đọc tiểu thuyết/kể chuyện: Chậm rãi, truyền cảm, trầm hơn
+            cmd.extend(["--rate=-15%", "--pitch=-5Hz"])
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+        if result.returncode != 0:
+            print(f"    -> [EDGE-TTS ERROR] {result.stderr}")
+            raise Exception("Lỗi khi chạy edge-tts")
+            
+        return tmp_file

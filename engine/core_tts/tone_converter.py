@@ -1,78 +1,87 @@
-# pyrefly: ignore [missing-import]
-import torch
-import time
 import os
-
-# Giả định nhập thư viện cốt lõi của OpenVoice
-# from openvoice.api import ToneColorConverter
+import torch
+from openvoice import se_extractor
+from openvoice.api import ToneColorConverter
 
 class OpenVoiceConverter:
-    def __init__(self, model_path: str, device: str = "cpu"):
+    def __init__(self, device: str = None):
         """
-        Khởi tạo mô hình hoán đổi âm sắc (Tone Color Converter).
+        Khởi tạo mô hình OpenVoice ToneColorConverter
         """
-        self.device = device
-        self.model_path = model_path
+        if device is None:
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        else:
+            self.device = device
+            
+        print(f"  [OPENVOICE INIT] Đang nạp mô hình ToneColorConverter lên {self.device.upper()}...")
         
-        # Đường dẫn cấu hình thường đi kèm trong cùng thư mục với file .pt
-        self.config_path = os.path.join(model_path, "config.json")
-        self.checkpoint_path = os.path.join(model_path, "checkpoint.pth")
+        # Đường dẫn tới thư mục weights của OpenVoice v2
+        # Giả định weights đã được tải về ở d:/Tai_lieu_dai_hoc/NienLuan/Text_to_Speach/engine/checkpoints/converter
+        self.ckpt_converter = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+            "checkpoints", "converter"
+        )
         
-        print(f"  [CONVERTER INIT] Đang nạp mô hình Hoán đổi âm sắc...")
-        print(f"    -> Đọc cấu hình từ: {self.config_path}")
+        # Nếu chưa có thư mục checkpoints/converter, ta tạo một hàm tải tự động
+        self._ensure_weights()
         
+        self.tone_color_converter = ToneColorConverter(os.path.join(self.ckpt_converter, 'config.json'), device=self.device)
+        self.tone_color_converter.load_ckpt(os.path.join(self.ckpt_converter, 'checkpoint.pth'))
+        print(f"  [OPENVOICE INIT] Nạp mô hình thành công!")
+        
+    def _ensure_weights(self):
+        """Tải weights của ToneColorConverter nếu chưa có"""
+        if not os.path.exists(os.path.join(self.ckpt_converter, 'checkpoint.pth')):
+            print("  [OPENVOICE INIT] Chưa tìm thấy trọng số OpenVoice Converter. Đang tải từ HuggingFace...")
+            os.makedirs(self.ckpt_converter, exist_ok=True)
+            
+            from huggingface_hub import hf_hub_download
+            import shutil
+            
+            print("  -> Đang tải config.json...")
+            config_path = hf_hub_download(repo_id="myshell-ai/OpenVoiceV2", filename="converter/config.json")
+            shutil.copy(config_path, os.path.join(self.ckpt_converter, 'config.json'))
+            
+            print("  -> Đang tải checkpoint.pth (có thể mất vài phút, ~260MB)...")
+            ckpt_path = hf_hub_download(repo_id="myshell-ai/OpenVoiceV2", filename="converter/checkpoint.pth")
+            shutil.copy(ckpt_path, os.path.join(self.ckpt_converter, 'checkpoint.pth'))
+            
+            print("  -> Hoàn tất tải trọng số!")
+
+    def convert(self, base_audio_path: str, reference_audio_path: str, output_path: str):
+        """
+        Chuyển đổi âm sắc từ reference_audio_path (mẫu) vào base_audio_path (gốc), lưu ra output_path
+        """
+        import sys
+        import os
+        scripts_dir = os.path.dirname(sys.executable)
+        
+        # Thêm venv/Scripts vào PATH để whisper và pydub tự động tìm thấy ffmpeg.exe, ffprobe.exe
+        if scripts_dir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = scripts_dir + os.pathsep + os.environ.get("PATH", "")
+
+        from openvoice import se_extractor
+        
+        print("    -> [OPENVOICE] Đang phân tích âm sắc giọng mẫu...")
+        # Trích xuất đặc trưng âm sắc (tone color) của file tham chiếu
+        target_se, audio_name = se_extractor.get_se(reference_audio_path, self.tone_color_converter, vad=True)
+        
+        # Vì ta dùng Edge TTS làm base, nó đã được tối ưu, nhưng ta cũng cần tone color của nó để tính toán delta
+        # Tuy nhiên OpenVoice yêu cầu source_se. Với Edge TTS (nhiều giọng), ta có thể lấy chính base_audio_path làm source_se
+        print(f"    -> [OPENVOICE] Đang tính toán Vector của âm thanh gốc...")
         try:
-            # 1. Nạp mô hình theo chuẩn OpenVoice
-            # self.watermark_model = None # Tùy chọn tắt watermark để tiết kiệm tài nguyên
-            # self.converter_model = ToneColorConverter(self.config_path, device=self.device)
-            # self.converter_model.load_ckpt(self.checkpoint_path)
-            
-            print(f"  [CONVERTER INIT] Thành công! Đã nạp Converter lên {self.device.upper()}")
-            
+            source_se, _ = se_extractor.get_se(base_audio_path, self.tone_color_converter, vad=True)
         except Exception as e:
-            print(f"  [CONVERTER ERROR] Lỗi nạp mô hình Tone Converter: {str(e)}")
-            raise e
-
-    def convert(self, base_audio_tensor, source_se, target_se):
-        """
-        Thực hiện hoán đổi giọng nói.
-        - base_audio_tensor: Âm thanh người máy đọc tiếng Việt (Shape: [1, Channels, Time])
-        - source_se: Vector âm sắc mặc định của người máy.
-        - target_se: Vector âm sắc của thầy cô.
-        """
-        start_time = time.time()
-        print(f"    -> [TONE CONVERTER] Bắt đầu quá trình hoán đổi âm sắc...")
-        
-        try:
-            # 1. Kiểm tra kích thước ma trận (Sanity Check)
-            print(f"    -> [CHECK TENSOR] Đầu vào Audio: {base_audio_tensor.shape}")
-            print(f"    -> [CHECK TENSOR] Vector Nguồn (Source SE): {source_se.shape}")
-            print(f"    -> [CHECK TENSOR] Vector Đích (Target SE): {target_se.shape}")
-
-            # 2. Xử lý qua mạng nơ-ron
-            with torch.no_grad(): # Ngăn rò rỉ RAM (OOM)
-                
-                # Gọi hàm cốt lõi của OpenVoice:
-                # encode_message = "@MyShell" # Khóa bản quyền (watermark) của OpenVoice
-                # final_audio = self.converter_model.convert(
-                #     audio=base_audio_tensor,
-                #     src_se=source_se,
-                #     tgt_se=target_se,
-                #     tau=0.3, # Hệ số cường độ hoán đổi (0.3 là mức tối ưu)
-                #     message=encode_message
-                # )
-                
-                # Giả lập kết quả Tensor âm thanh đầu ra
-                final_audio = torch.randn(1, 1, 48000).to(self.device)
-
-            process_time = time.time() - start_time
-            print(f"    -> [TONE CONVERTER SUCCESS] Hoán đổi hoàn tất! TG: {process_time:.2f}s")
+            print(f"    -> [OPENVOICE WARNING] {e}. Bỏ qua tách VAD và trích xuất trực tiếp...")
+            source_se = self.tone_color_converter.extract_se([base_audio_path], se_save_path=None)
             
-            return final_audio
-
-        except Exception as e:
-            print(f"    -> [TONE CONVERTER ERROR] Hoán đổi thất bại: {str(e)}")
-            # In ra trạng thái RAM để debug nếu bị sập
-            if self.device == "cuda":
-                print(f"    -> [CRASH DUMP] VRAM hiện tại: {torch.cuda.memory_allocated() / 1024**2:.2f} MB")
-            raise e
+        print(f"    -> [OPENVOICE] Đang thực hiện Clone giọng nói...")
+        self.tone_color_converter.convert(
+            audio_src_path=base_audio_path, 
+            src_se=source_se, 
+            tgt_se=target_se, 
+            output_path=output_path,
+            message="@MyShell"
+        )
+        print(f"    -> [OPENVOICE SUCCESS] Đã lưu file clone: {output_path}")
+        return output_path

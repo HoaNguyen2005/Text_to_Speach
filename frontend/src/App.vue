@@ -21,15 +21,15 @@ const isRegisterMode = ref(false);
 
 // Lecture state
 const text = ref('');
-const teacherId = ref('thay_giao_01');
+const teacherId = ref('male');
 const styleId = ref('news');
 const loading = ref(false);
 const resultAudioUrl = ref(null);
 const errorMessage = ref('');
 
 const teachers = [
-  { id: 'thay_giao_01', name: 'Thầy Giáo 01 (Cơ bản)' },
-  { id: 'co_giao_02', name: 'Cô Giáo 02 (Nhẹ nhàng)' }
+  { id: 'male', name: 'Giọng Nam Mẫu (male.wav)' },
+  { id: 'female', name: 'Giọng Nữ Mẫu (female.wav)' }
 ];
 
 const styles = [
@@ -130,8 +130,8 @@ const generateLecture = async () => {
 <template>
   <div class="app-container">
     <div class="glass-panel">
-      <!-- MÀN HÌNH ĐĂNG NHẬP / ĐĂNG KÝ -->
-      <div v-if="!session" class="auth-container">
+      <!-- MÀN HÌNH ĐĂNG NHẬP / ĐĂNG KÝ (Đã ẩn tạm thời để test) -->
+      <div v-if="false" class="auth-container">
         <header class="header">
           <h1>Đăng Nhập Hệ Thống</h1>
           <p v-if="!isSupabaseConfigured" class="warning-text">Lưu ý: Chưa cấu hình .env cho Supabase</p>
@@ -178,15 +178,15 @@ const generateLecture = async () => {
         </div>
       </div>
 
-      <!-- MÀN HÌNH TẠO BÀI GIẢNG -->
-      <div v-else>
+      <!-- MÀN HÌNH TẠO BÀI GIẢNG (Hiển thị mặc định) -->
+      <div v-if="true">
         <header class="header app-header">
           <div>
             <h1>Voice Cloning TTS</h1>
             <p>Hệ thống tổng hợp bài giảng bằng AI</p>
           </div>
           <div class="user-info">
-            <span>👤 {{ session.user.email }}</span>
+            <span>👤 {{ session?.user?.email || 'test@user.com' }}</span>
             <button class="logout-btn" @click="handleLogout">Đăng Xuất</button>
           </div>
         </header>

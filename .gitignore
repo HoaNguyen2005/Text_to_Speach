@@ -7,6 +7,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Node/JavaScript
+node_modules/
+dist/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -17,17 +21,22 @@ __pycache__/
 .vscode/
 .idea/
 
-# Weights & Large files
+# Weights, Caches & Large files
 *.pt
 *.pth
 *.bin
 *.safetensors
 *.ckpt
 *.onnx
+engine/checkpoints/
+engine/processed/
+.cache/
 engine/models_weights/
 
-# Media
+# Media & Generated Files
+backend/public/audio/generated/*.wav
+backend/public/audio/generated/*.mp3
+engine/*.mp3
+engine/*.wav
 *.mp4
-*.wav
-*.mp3
 *.avi
